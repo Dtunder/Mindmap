@@ -1,0 +1,77 @@
+:root {
+  --bg-deep: #0a0a0c;
+  --bg-glass: rgba(20, 20, 25, 0.7);
+  --accent-cyan: #00f2ff;
+  --accent-purple: #bc13fe;
+  --text-main: #e0e0e6;
+  --text-dim: #a0a0aa;
+  --glow-cyan: 0 0 15px rgba(0, 242, 255, 0.4);
+  --glow-purple: 0 0 15px rgba(188, 19, 254, 0.4);
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-deep);
+  color: var(--text-main);
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+}
+
+.glass-panel {
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+
+.neon-border-cyan {
+  border: 1px solid var(--accent-cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.neon-border-purple {
+  border: 1px solid var(--accent-purple);
+  box-shadow: var(--glow-purple);
+}
+
+/* React Flow Overrides */
+.react-flow__node {
+  background: var(--bg-glass) !important;
+  color: var(--text-main) !important;
+  border-radius: 8px !important;
+  padding: 10px !important;
+  font-size: 14px !important;
+  backdrop-filter: blur(8px);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.react-flow__node:hover {
+  transform: scale(1.05);
+}
+
+.react-flow__edge-path {
+  stroke: var(--accent-cyan) !important;
+  stroke-width: 2 !important;
+  filter: drop-shadow(0 0 5px var(--accent-cyan));
+}
+
+.react-flow__controls {
+  background: var(--bg-glass) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+}
+
+.react-flow__controls-button {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: transparent !important;
+  fill: var(--text-main) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}

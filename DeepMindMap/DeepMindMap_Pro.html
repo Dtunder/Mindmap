@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepMindMap Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-deep: #08080c;
+            --bg-card: rgba(18, 18, 24, 0.85);
+            --accent-cyan: #00f2ff;
+            --accent-purple: #bc13fe;
+            --accent-pink: #ff3cac;
+            --text-main: #e0e0e8;
+            --text-dim: #7a7a8a;
+            --glow-cyan: 0 0 12px rgba(0, 242, 255, 0.35);
+            --glow-purple: 0 0 12px rgba(188, 19, 254, 0.35);
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            position: fixed;
+            left: 16px;
+            top: 16px;
+            bottom: 16px;
+            width: 320px;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 24px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo-icon {
+            width: 38px; height: 38px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .logo h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+
+        .upload-zone {
+            border: 2px dashed rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+        }
+        .upload-zone:hover { border-color: var(--accent-cyan); background: rgba(0,242,255,0.03); }
+        .upload-zone svg { margin-bottom: 8px; color: var(--accent-cyan); }
+        .upload-zone p { font-size: 13px; color: var(--text-dim); }
+
+        .label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; font-weight: 700; }
+
+        .selected-info {
+            flex: 1;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+        }
+        .selected-info h3 { color: var(--accent-cyan); font-size: 16px; line-height: 1.4; }
+        .selected-info .path { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+
+        .content-preview {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 14px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #b0b0c0;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .depth-badge {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 99px;
+            font-size: 10px;
+            font-weight: 700;
+            background: rgba(188,19,254,0.15);
+            color: var(--accent-purple);
+            border: 1px solid rgba(188,19,254,0.3);
+            align-self: flex-start;
+        }
+
+        .processing {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px;
+            background: rgba(0,242,255,0.05);
+            border: 1px solid rgba(0,242,255,0.15);
+            border-radius: 10px;
+            font-size: 13px;
+            color: var(--accent-cyan);
+        }
+        .spinner {
+            width: 18px; height: 18px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Canvas ── */
+        .canvas-wrap {
+            position: fixed;
+            left: 352px; top: 0; right: 0; bottom: 0;
+            overflow: hidden;
+            cursor: grab;
+            background: radial-gradient(circle at center, #111116 0%, #08080c 100%);
+        }
+        .canvas-wrap:active { cursor: grabbing; }
+
+        .canvas {
+            position: absolute;
+            transform-origin: 0 0;
+            transition: none;
+        }
+
+        /* ── Edges ── */
+        .edges-layer {
+            position: absolute;
+            top: 0; left: 0;
+            pointer-events: none;
+            overflow: visible;
+        }
+        .edges-layer path {
+            fill: none;
+            stroke: var(--accent-cyan);
+            stroke-width: 2;
+            opacity: 0.35;
+            filter: drop-shadow(0 0 4px rgba(0,242,255,0.2));
+            transition: opacity 0.3s;
+        }
+
+        /* ── Nodes ── */
+        .node {
+            position: absolute;
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 14px 22px;
+            font-size: 14px;
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: nodeAppear 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .node:hover { transform: scale(1.06) translateY(-5px); z-index: 50; border-color: rgba(255,255,255,0.4); }
+
+        .node.depth-0 { border-color: var(--accent-cyan); box-shadow: var(--glow-cyan); font-size: 16px; font-weight: 700; }
+        .node.depth-1 { border-color: var(--accent-purple); box-shadow: var(--glow-purple); }
+        .node.depth-2 { border-color: #00d4aa; }
+        .node.depth-3 { border-color: #ff6b6b; }
+        .node.depth-4 { border-color: #ffd93d; }
+        .node.expanded { border-style: solid; opacity: 0.85; }
+        .node.expanded::after {
+            content: '';
+            position: absolute;
+            bottom: -2px; left: 50%;
+            transform: translateX(-50%);
+            width: 40%; height: 2px;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 8px var(--accent-cyan);
+        }
+
+        @keyframes nodeAppear {
+            from { opacity: 0; transform: scale(0.8) translateY(20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        /* ── Zoom Controls ── */
+        .zoom-controls {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 100;
+        }
+        .zoom-btn {
+            width: 42px; height: 42px;
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: var(--text-main);
+            font-size: 20px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .zoom-btn:hover { background: rgba(255,255,255,0.15); color: var(--accent-cyan); border-color: var(--accent-cyan); }
+
+        #pdf-input { display: none; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="logo">
+        <div class="logo-icon">✨</div>
+        <h1>DeepMindMap Pro</h1>
+    </div>
+
+    <div>
+        <div class="label">Knowledge Source</div>
+        <div class="upload-zone" id="upload-zone">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p>Load your PDF Document</p>
+        </div>
+    </div>
+
+    <div id="processing-indicator" class="processing" style="display:none;">
+        <div class="spinner"></div>
+        <span>Analyzing Semantics...</span>
+    </div>
+
+    <div id="selected-info" class="selected-info" style="display:none;">
+        <div class="label">Branch Context</div>
+        <h3 id="selected-label"></h3>
+        <div class="depth-badge" id="selected-depth"></div>
+        <div class="path" id="selected-path"></div>
+        <div class="label" style="margin-top:10px">Extracted Context</div>
+        <div class="content-preview" id="content-preview"></div>
+    </div>
+
+    <div style="margin-top:auto; font-size: 11px; color: var(--text-dim); line-height: 1.6; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 16px;">
+        Click any node to dive into <strong>Semantic Layers</strong>. The app automatically detects headers, key concepts, and technical nuances.
+    </div>
+</div>
+
+<div class="canvas-wrap" id="canvas-wrap">
+    <svg class="edges-layer" id="edges-layer" width="20000" height="20000"></svg>
+    <div class="canvas" id="canvas"></div>
+</div>
+
+<div class="zoom-controls">
+    <button class="zoom-btn" id="zoom-in" title="Zoom In">+</button>
+    <button class="zoom-btn" id="zoom-out" title="Zoom Out">−</button>
+    <button class="zoom-btn" id="zoom-fit" title="Fit All Content">⊡</button>
+</div>
+
+<input type="file" id="pdf-input" accept=".pdf">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+
+<script type="module">
+const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs');
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+let allNodes = [];
+let allEdges = [];
+let scale = 0.8;
+let panX = 0, panY = 0;
+let isPanning = false;
+let startPanX, startPanY;
+
+const canvas = document.getElementById('canvas');
+const canvasWrap = document.getElementById('canvas-wrap');
+const edgesLayer = document.getElementById('edges-layer');
+const uploadZone = document.getElementById('upload-zone');
+const pdfInput = document.getElementById('pdf-input');
+const processingEl = document.getElementById('processing-indicator');
+const selectedInfo = document.getElementById('selected-info');
+
+// ── Pan & Zoom Logic ──
+function applyTransform() {
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    edgesLayer.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+
+canvasWrap.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('node')) return;
+    isPanning = true;
+    startPanX = e.clientX - panX;
+    startPanY = e.clientY - panY;
+});
+window.addEventListener('mousemove', (e) => {
+    if (!isPanning) return;
+    panX = e.clientX - startPanX;
+    panY = e.clientY - startPanY;
+    applyTransform();
+});
+window.addEventListener('mouseup', () => { isPanning = false; });
+
+canvasWrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.92 : 1.08;
+    const newScale = Math.max(0.05, Math.min(4, scale * delta));
+    const rect = canvasWrap.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    panX = mx - (mx - panX) * (newScale / scale);
+    panY = my - (my - panY) * (newScale / scale);
+    scale = newScale;
+    applyTransform();
+}, { passive: false });
+
+document.getElementById('zoom-in').onclick = () => { scale = Math.min(4, scale * 1.2); applyTransform(); };
+document.getElementById('zoom-out').onclick = () => { scale = Math.max(0.05, scale * 0.8); applyTransform(); };
+document.getElementById('zoom-fit').onclick = fitView;
+
+function fitView() {
+    if (allNodes.length === 0) return;
+    const xs = allNodes.map(n => n.x);
+    const ys = allNodes.map(n => n.y);
+    const minX = Math.min(...xs) - 150;
+    const maxX = Math.max(...xs) + 300;
+    const minY = Math.min(...ys) - 100;
+    const maxY = Math.max(...ys) + 150;
+    const w = maxX - minX;
+    const h = maxY - minY;
+    const wrapRect = canvasWrap.getBoundingClientRect();
+    scale = Math.min(wrapRect.width / w, wrapRect.height / h, 1.2) * 0.9;
+    panX = (wrapRect.width - w * scale) / 2 - minX * scale;
+    panY = (wrapRect.height - h * scale) / 2 - minY * scale;
+    applyTransform();
+}
+
+// ── Rendering ──
+function render() {
+    canvas.innerHTML = '';
+    allNodes.forEach(node => {
+        const el = document.createElement('div');
+        el.className = `node depth-${Math.min(node.depth, 9)}${node.expanded ? ' expanded' : ''}`;
+        el.style.left = node.x + 'px';
+        el.style.top = node.y + 'px';
+        el.textContent = node.label;
+        el.addEventListener('click', (e) => { e.stopPropagation(); onNodeClick(node); });
+        canvas.appendChild(el);
+    });
+
+    edgesLayer.innerHTML = '';
+    allEdges.forEach(edge => {
+        const p = allNodes.find(n => n.id === edge.source);
+        const c = allNodes.find(n => n.id === edge.target);
+        if (!p || !c) return;
+        const x1 = p.x + 80, y1 = p.y + 25, x2 = c.x + 80, y2 = c.y;
+        const cy1 = y1 + (y2 - y1) * 0.5, cy2 = y1 + (y2 - y1) * 0.5;
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`);
+        edgesLayer.appendChild(path);
+    });
+}
+
+// ── Smart Semantic Extraction ──
+function extractSemanticTopics(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+    const topics = [];
+    
+    // Pattern 1: Heading detection (Numbered sections or all caps)
+    const headingRegex = /^(\d+\.|\d+\.\d+|[A-Z\s]{10,})/ ;
+    const potentialHeadings = lines.filter(l => headingRegex.test(l));
+    
+    if (potentialHeadings.length > 3) {
+        potentialHeadings.slice(0, 6).forEach(h => {
+            const startIdx = text.indexOf(h);
+            topics.push({ 
+                title: h.length > 40 ? h.slice(0, 37) + '...' : h, 
+                content: text.slice(startIdx, startIdx + 2000) 
+            });
+        });
+    } else {
+        // Pattern 2: Keyword Frequency Analysis (Simple)
+        const stopWords = new Set(['the','and','for','that','with','this','from','was','were','been','would','could','should']);
+        const words = text.toLowerCase().match(/\b(\w{5,})\b/g) || [];
+        const freq = {};
+        words.forEach(w => { if(!stopWords.has(w)) freq[w] = (freq[w] || 0) + 1; });
+        
+        const sorted = Object.entries(freq).sort((a,b) => b[1] - a[1]).slice(0, 5);
+        sorted.forEach(([word, f]) => {
+            const idx = text.toLowerCase().indexOf(word);
+            topics.push({ 
+                title: word.charAt(0).toUpperCase() + word.slice(1), 
+                content: text.slice(Math.max(0, idx - 100), idx + 1500) 
+            });
+        });
+    }
+    return topics.length > 0 ? topics : [{title: 'Overview', content: text}];
+}
+
+function generateDeepSubTopics(node) {
+    const text = node.text || '';
+    const sentences = text.split(/[.!?]\s/).filter(s => s.length > 10);
+    const subTopics = [];
+    
+    // Find unique key concepts in this specific text block
+    const concepts = [];
+    const seen = new Set();
+    
+    sentences.forEach(s => {
+        const nouns = s.match(/\b([A-Z][a-z]+|[a-z]{6,})\b/g) || [];
+        nouns.forEach(n => {
+            const lower = n.toLowerCase();
+            if (lower.length > 5 && !seen.has(lower)) {
+                concepts.push({ term: n, sentence: s });
+                seen.add(lower);
+            }
+        });
+    });
+
+    // Pick top 3-4 distinct concepts
+    concepts.sort((a,b) => b.term.length - a.term.length).slice(0, 4).forEach(c => {
+        const idx = text.indexOf(c.sentence);
+        subTopics.push({
+            title: c.term,
+            content: text.slice(Math.max(0, idx - 100), idx + 1000)
+        });
+    });
+
+    // Fallback if no concepts found
+    if (subTopics.length < 2) {
+        return sentences.slice(0, 3).map(s => ({ 
+            title: s.slice(0, 30) + '...', 
+            content: text 
+        }));
+    }
+    
+    return subTopics;
+}
+
+// ── Handlers ──
+uploadZone.addEventListener('click', () => pdfInput.click());
+pdfInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    processingEl.style.display = 'flex';
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            fullText += content.items.map(it => it.str).join(' ') + '\n';
+        }
+
+        const sections = extractSemanticTopics(fullText);
+        allNodes = [{ id: 'root', label: file.name.replace('.pdf',''), x: 400, y: 30, depth: 0, expanded: true, text: fullText }];
+        allEdges = [];
+
+        sections.forEach((sec, i) => {
+            const id = `s-${i}`;
+            allNodes.push({ id, label: sec.title, x: i * 250, y: 180, depth: 1, expanded: false, text: sec.content });
+            allEdges.push({ source: 'root', target: id });
+        });
+
+        uploadZone.querySelector('p').textContent = '✓ ' + file.name;
+        render();
+        setTimeout(fitView, 150);
+    } catch (err) {
+        alert('Error: ' + err.message);
+    } finally {
+        processingEl.style.display = 'none';
+    }
+});
+
+function onNodeClick(node) {
+    selectedInfo.style.display = 'flex';
+    document.getElementById('selected-label').textContent = node.label;
+    document.getElementById('selected-depth').textContent = `Semantic Layer ${node.depth}`;
+    document.getElementById('content-preview').textContent = node.text ? node.text.slice(0, 1000) + '...' : 'No content available.';
+    
+    const path = [];
+    let cur = node.id;
+    while(cur) {
+        const n = allNodes.find(x => x.id === cur);
+        if(!n) break;
+        path.unshift(n.label);
+        const e = allEdges.find(x => x.target === cur);
+        cur = e ? e.source : null;
+    }
+    document.getElementById('selected-path').textContent = path.join(' → ');
+
+    if (node.expanded || node.id === 'root') return;
+    
+    node.expanded = true;
+    processingEl.style.display = 'flex';
+
+    setTimeout(() => {
+        const subTopics = generateDeepSubTopics(node);
+        const spreadX = 220;
+        const startX = node.x - ((subTopics.length - 1) * spreadX) / 2;
+
+        subTopics.forEach((sub, i) => {
+            const id = `${node.id}-d-${i}`;
+            allNodes.push({
+                id, label: sub.title, x: startX + i * spreadX, y: node.y + 160, 
+                depth: node.depth + 1, expanded: false, text: sub.content 
+            });
+            allEdges.push({ source: node.id, target: id });
+        });
+
+        render();
+        processingEl.style.display = 'none';
+    }, 800);
+}
+
+render();
+applyTransform();
+</script>
+</body>
+</html>

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepMindMap</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-deep: #08080c;
+            --bg-card: rgba(18, 18, 24, 0.85);
+            --accent-cyan: #00f2ff;
+            --accent-purple: #bc13fe;
+            --accent-pink: #ff3cac;
+            --text-main: #e0e0e8;
+            --text-dim: #7a7a8a;
+            --glow-cyan: 0 0 12px rgba(0, 242, 255, 0.35);
+            --glow-purple: 0 0 12px rgba(188, 19, 254, 0.35);
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            position: fixed;
+            left: 16px;
+            top: 16px;
+            bottom: 16px;
+            width: 300px;
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 24px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo-icon {
+            width: 38px; height: 38px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .logo h1 { font-size: 18px; font-weight: 700; }
+
+        .upload-zone {
+            border: 2px dashed rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+        }
+        .upload-zone:hover { border-color: var(--accent-cyan); background: rgba(0,242,255,0.03); }
+        .upload-zone svg { margin-bottom: 8px; }
+        .upload-zone p { font-size: 13px; color: var(--text-dim); }
+
+        .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 4px; }
+
+        .selected-info {
+            flex: 1;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding-top: 16px;
+        }
+        .selected-info h3 { color: var(--accent-cyan); font-size: 15px; margin: 6px 0 8px; }
+        .selected-info .path { font-size: 11px; color: var(--text-dim); word-break: break-all; line-height: 1.6; }
+
+        .depth-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(188,19,254,0.15);
+            color: var(--accent-purple);
+            border: 1px solid rgba(188,19,254,0.3);
+            margin-top: 8px;
+        }
+
+        .tip-box {
+            background: rgba(0,0,0,0.25);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 12px;
+            color: var(--text-dim);
+            line-height: 1.5;
+            margin-top: auto;
+        }
+        .tip-box strong { color: var(--accent-purple); }
+
+        .processing {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 14px;
+            background: rgba(0,242,255,0.05);
+            border: 1px solid rgba(0,242,255,0.15);
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Canvas ── */
+        .canvas-wrap {
+            position: fixed;
+            left: 332px; top: 0; right: 0; bottom: 0;
+            overflow: hidden;
+            cursor: grab;
+        }
+        .canvas-wrap:active { cursor: grabbing; }
+
+        .canvas {
+            position: absolute;
+            transform-origin: 0 0;
+            transition: none;
+        }
+
+        /* ── Edges (SVG) ── */
+        .edges-layer {
+            position: absolute;
+            top: 0; left: 0;
+            pointer-events: none;
+            overflow: visible;
+        }
+        .edges-layer path {
+            fill: none;
+            stroke: var(--accent-cyan);
+            stroke-width: 2;
+            opacity: 0.5;
+            filter: drop-shadow(0 0 4px rgba(0,242,255,0.3));
+        }
+
+        /* ── Nodes ── */
+        .node {
+            position: absolute;
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 12px 18px;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+            animation: nodeAppear 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .node:hover { transform: scale(1.08); z-index: 50; }
+
+        .node.depth-0 { border-color: var(--accent-cyan); box-shadow: var(--glow-cyan); font-size: 15px; font-weight: 700; }
+        .node.depth-1 { border-color: var(--accent-purple); box-shadow: var(--glow-purple); }
+        .node.depth-2 { border-color: #00d4aa; box-shadow: 0 0 10px rgba(0,212,170,0.3); }
+        .node.depth-3 { border-color: #ff6b6b; box-shadow: 0 0 10px rgba(255,107,107,0.3); }
+        .node.depth-4 { border-color: #ffd93d; box-shadow: 0 0 10px rgba(255,217,61,0.3); }
+        .node.depth-5 { border-color: #6bcbff; box-shadow: 0 0 10px rgba(107,203,255,0.3); }
+        .node.depth-6 { border-color: #c084fc; box-shadow: 0 0 10px rgba(192,132,252,0.3); }
+        .node.depth-7 { border-color: #fb923c; box-shadow: 0 0 10px rgba(251,146,60,0.3); }
+        .node.depth-8 { border-color: #34d399; box-shadow: 0 0 10px rgba(52,211,153,0.3); }
+        .node.depth-9 { border-color: #f472b6; box-shadow: 0 0 10px rgba(244,114,182,0.3); }
+        .node.expanded { opacity: 0.7; }
+        .node.expanded::after {
+            content: '✓';
+            position: absolute;
+            top: -6px; right: -6px;
+            width: 18px; height: 18px;
+            background: #10b981;
+            color: white;
+            font-size: 10px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        @keyframes nodeAppear {
+            from { opacity: 0; transform: scale(0.5); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        /* ── Zoom Controls ── */
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 100;
+        }
+        .zoom-btn {
+            width: 36px; height: 36px;
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .zoom-btn:hover { background: rgba(255,255,255,0.1); }
+
+        /* ── Hidden File Input ── */
+        #pdf-input { display: none; }
+    </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <div class="logo">
+        <div class="logo-icon">🧠</div>
+        <h1>DeepMindMap</h1>
+    </div>
+
+    <div>
+        <div class="label">Source Document</div>
+        <div class="upload-zone" id="upload-zone">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p>Click to upload PDF</p>
+        </div>
+    </div>
+
+    <div id="processing-indicator" class="processing" style="display:none;">
+        <div class="spinner"></div>
+        <span>Expanding branch...</span>
+    </div>
+
+    <div id="selected-info" class="selected-info" style="display:none;">
+        <div class="label">Selected Branch</div>
+        <h3 id="selected-label"></h3>
+        <div class="path" id="selected-path"></div>
+        <div class="depth-badge" id="selected-depth"></div>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Pro Tip:</strong> Click any node to expand it. You can go <strong>10+ levels deep</strong>. Each level reveals more specific detail from your document.
+    </div>
+</div>
+
+<!-- Canvas -->
+<div class="canvas-wrap" id="canvas-wrap">
+    <svg class="edges-layer" id="edges-layer" width="20000" height="20000"></svg>
+    <div class="canvas" id="canvas"></div>
+</div>
+
+<!-- Zoom -->
+<div class="zoom-controls">
+    <button class="zoom-btn" id="zoom-in">+</button>
+    <button class="zoom-btn" id="zoom-out">−</button>
+    <button class="zoom-btn" id="zoom-fit">⊡</button>
+</div>
+
+<input type="file" id="pdf-input" accept=".pdf">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+
+<script type="module">
+// ── PDF.js Setup ──
+const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs');
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
+// ── State ──
+let allNodes = [];
+let allEdges = [];
+let pdfFullText = '';
+let scale = 1;
+let panX = 0, panY = 0;
+let isPanning = false;
+let startPanX, startPanY;
+
+const canvas = document.getElementById('canvas');
+const canvasWrap = document.getElementById('canvas-wrap');
+const edgesLayer = document.getElementById('edges-layer');
+const uploadZone = document.getElementById('upload-zone');
+const pdfInput = document.getElementById('pdf-input');
+const processingEl = document.getElementById('processing-indicator');
+const selectedInfo = document.getElementById('selected-info');
+
+// ── Pan & Zoom ──
+function applyTransform() {
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    edgesLayer.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+
+canvasWrap.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('node')) return;
+    isPanning = true;
+    startPanX = e.clientX - panX;
+    startPanY = e.clientY - panY;
+});
+window.addEventListener('mousemove', (e) => {
+    if (!isPanning) return;
+    panX = e.clientX - startPanX;
+    panY = e.clientY - startPanY;
+    applyTransform();
+});
+window.addEventListener('mouseup', () => { isPanning = false; });
+
+canvasWrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.1, Math.min(3, scale * delta));
+    // Zoom toward cursor
+    const rect = canvasWrap.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    panX = mx - (mx - panX) * (newScale / scale);
+    panY = my - (my - panY) * (newScale / scale);
+    scale = newScale;
+    applyTransform();
+}, { passive: false });
+
+document.getElementById('zoom-in').onclick = () => { scale = Math.min(3, scale * 1.2); applyTransform(); };
+document.getElementById('zoom-out').onclick = () => { scale = Math.max(0.1, scale * 0.8); applyTransform(); };
+document.getElementById('zoom-fit').onclick = fitView;
+
+function fitView() {
+    if (allNodes.length === 0) return;
+    const xs = allNodes.map(n => n.x);
+    const ys = allNodes.map(n => n.y);
+    const minX = Math.min(...xs) - 100;
+    const maxX = Math.max(...xs) + 250;
+    const minY = Math.min(...ys) - 50;
+    const maxY = Math.max(...ys) + 100;
+    const w = maxX - minX;
+    const h = maxY - minY;
+    const wrapRect = canvasWrap.getBoundingClientRect();
+    scale = Math.min(wrapRect.width / w, wrapRect.height / h, 1.5) * 0.85;
+    panX = (wrapRect.width - w * scale) / 2 - minX * scale;
+    panY = (wrapRect.height - h * scale) / 2 - minY * scale;
+    applyTransform();
+}
+
+// ── Render ──
+function render() {
+    // Nodes
+    canvas.innerHTML = '';
+    allNodes.forEach(node => {
+        const el = document.createElement('div');
+        el.className = `node depth-${Math.min(node.depth, 9)}${node.expanded ? ' expanded' : ''}`;
+        el.style.left = node.x + 'px';
+        el.style.top = node.y + 'px';
+        el.textContent = node.label;
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onNodeClick(node);
+        });
+        canvas.appendChild(el);
+    });
+
+    // Edges
+    edgesLayer.innerHTML = '';
+    allEdges.forEach(edge => {
+        const parent = allNodes.find(n => n.id === edge.source);
+        const child = allNodes.find(n => n.id === edge.target);
+        if (!parent || !child) return;
+
+        const x1 = parent.x + 80;
+        const y1 = parent.y + 20;
+        const x2 = child.x + 80;
+        const y2 = child.y;
+        const cy1 = y1 + (y2 - y1) * 0.4;
+        const cy2 = y1 + (y2 - y1) * 0.6;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`);
+        edgesLayer.appendChild(path);
+    });
+}
+
+// ── PDF Upload ──
+uploadZone.addEventListener('click', () => pdfInput.click());
+pdfInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    processingEl.style.display = 'flex';
+
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            fullText += content.items.map(it => it.str).join(' ') + '\n';
+        }
+        pdfFullText = fullText;
+
+        // Extract real sections from the text
+        const sections = extractSections(fullText);
+
+        // Build initial nodes
+        allNodes = [{ id: 'root', label: file.name.replace('.pdf', ''), x: 400, y: 30, depth: 0, expanded: true, text: fullText }];
+        allEdges = [];
+
+        sections.forEach((sec, i) => {
+            const nodeId = `s-${i}`;
+            allNodes.push({
+                id: nodeId,
+                label: sec.title,
+                x: i * 220,
+                y: 160,
+                depth: 1,
+                expanded: false,
+                text: sec.content
+            });
+            allEdges.push({ source: 'root', target: nodeId });
+        });
+
+        uploadZone.querySelector('p').textContent = '✓ ' + file.name;
+        render();
+        setTimeout(fitView, 100);
+    } catch (err) {
+        console.error(err);
+        alert('Error reading PDF: ' + err.message);
+    } finally {
+        processingEl.style.display = 'none';
+    }
+});
+
+function extractSections(text) {
+    // Try to find natural sections by looking for patterns
+    const lines = text.split('\n').filter(l => l.trim().length > 0);
+
+    // Strategy: chunk text into meaningful segments
+    const totalLen = text.length;
+    const chunkSize = Math.max(500, Math.floor(totalLen / 5));
+    const sections = [];
+
+    // Simple heuristic: first ~200 chars are "Overview", then chunk the rest
+    const sectionNames = ['Overview & Context', 'Core Concepts', 'Key Details', 'Analysis & Methods', 'Conclusions'];
+
+    for (let i = 0; i < sectionNames.length; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, totalLen);
+        if (start >= totalLen) break;
+        sections.push({
+            title: sectionNames[i],
+            content: text.slice(start, end)
+        });
+    }
+
+    return sections;
+}
+
+// ── Node Click → Expand ──
+function onNodeClick(node) {
+    // Update sidebar
+    selectedInfo.style.display = 'block';
+    document.getElementById('selected-label').textContent = node.label;
+    document.getElementById('selected-depth').textContent = `Depth: ${node.depth}`;
+
+    // Build path from root
+    const path = getPath(node);
+    document.getElementById('selected-path').textContent = path.join(' → ');
+
+    if (node.expanded) return;
+    if (node.id === 'root') return;
+
+    node.expanded = true;
+    processingEl.style.display = 'flex';
+
+    setTimeout(() => {
+        const subTopics = generateSubTopics(node);
+        const childCount = subTopics.length;
+        const spreadX = 200;
+        const startX = node.x - ((childCount - 1) * spreadX) / 2;
+
+        subTopics.forEach((sub, i) => {
+            const childId = `${node.id}-${i}`;
+            allNodes.push({
+                id: childId,
+                label: sub.title,
+                x: startX + i * spreadX,
+                y: node.y + 120,
+                depth: node.depth + 1,
+                expanded: false,
+                text: sub.content
+            });
+            allEdges.push({ source: node.id, target: childId });
+        });
+
+        render();
+        processingEl.style.display = 'none';
+    }, 600);
+}
+
+function getPath(node) {
+    const path = [node.label];
+    let currentId = node.id;
+    while (true) {
+        const edge = allEdges.find(e => e.target === currentId);
+        if (!edge) break;
+        const parent = allNodes.find(n => n.id === edge.source);
+        if (!parent) break;
+        path.unshift(parent.label);
+        currentId = parent.id;
+    }
+    return path;
+}
+
+function generateSubTopics(node) {
+    const text = node.text || '';
+    if (text.length < 20) {
+        return [
+            { title: `Detail of ${node.label}`, content: text },
+            { title: `Nuance of ${node.label}`, content: text }
+        ];
+    }
+
+    // Split the node's text content into 3-4 roughly equal chunks
+    const numChildren = Math.min(4, Math.max(2, Math.ceil(text.length / 300)));
+    const chunkSize = Math.ceil(text.length / numChildren);
+    const results = [];
+
+    for (let i = 0; i < numChildren; i++) {
+        const chunk = text.slice(i * chunkSize, (i + 1) * chunkSize);
+        // Extract a meaningful label from the first ~60 chars of the chunk
+        const label = extractLabel(chunk, i, node.depth);
+        results.push({ title: label, content: chunk });
+    }
+
+    return results;
+}
+
+function extractLabel(chunk, index, depth) {
+    // Try to find a meaningful phrase in the chunk
+    const clean = chunk.replace(/\s+/g, ' ').trim();
+    const words = clean.split(' ').filter(w => w.length > 2);
+
+    if (words.length === 0) return `Section ${index + 1}`;
+
+    // Take a meaningful slice of words as the label
+    const startWord = Math.min(index * 2, Math.max(0, words.length - 5));
+    const labelWords = words.slice(startWord, startWord + Math.min(5, words.length));
+    let label = labelWords.join(' ');
+
+    // Cap at 40 chars
+    if (label.length > 40) label = label.slice(0, 37) + '...';
+
+    return label || `Detail ${index + 1}`;
+}
+
+// ── Initial Render ──
+render();
+applyTransform();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepMindMap - Instant Launch</title>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "reactflow": "https://esm.sh/reactflow@11.10.1",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0",
+        "pdfjs-dist": "https://esm.sh/pdfjs-dist@4.0.379"
+      }
+    }
+    </script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.10.1/dist/style.css">
+    <style>
+        :root {
+            --bg-deep: #0a0a0c;
+            --bg-glass: rgba(20, 20, 25, 0.7);
+            --accent-cyan: #00f2ff;
+            --accent-purple: #bc13fe;
+            --text-main: #e0e0e6;
+            --text-dim: #a0a0aa;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #root {
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .glass-panel {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+
+        .neon-border-cyan { border: 1px solid var(--accent-cyan); box-shadow: 0 0 10px rgba(0, 242, 255, 0.3); }
+        .neon-border-purple { border: 1px solid var(--accent-purple); box-shadow: 0 0 10px rgba(188, 19, 254, 0.3); }
+
+        .react-flow__node {
+            background: var(--bg-glass) !important;
+            color: var(--text-main) !important;
+            border-radius: 8px !important;
+            padding: 10px !important;
+            font-size: 14px !important;
+            backdrop-filter: blur(8px);
+        }
+
+        .sidebar {
+            width: 300px;
+            height: calc(100vh - 40px);
+            margin: 20px;
+            padding: 20px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .upload-box {
+            padding: 20px;
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useCallback, useEffect } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import ReactFlow, {
+            ReactFlowProvider,
+            useNodesState,
+            useEdgesState,
+            addEdge,
+            Background,
+            Controls,
+            MiniMap
+        } from 'reactflow';
+        import { Upload, Layers, Info } from 'lucide-react';
+        import * as pdfjsLib from 'pdfjs-dist';
+
+        // Worker setup for PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.worker.mjs';
+
+        const DeepMindMap = () => {
+            const [nodes, setNodes, onNodesChange] = useNodesState([
+                { id: 'root', type: 'input', data: { label: 'Upload PDF to Start', depth: 0 }, position: { x: 250, y: 5 }, className: 'neon-border-cyan' }
+            ]);
+            const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [pdfText, setPdfText] = useState('');
+
+            const onFileUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setIsProcessing(true);
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    let text = '';
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        text += content.items.map(item => item.str).join(' ') + '\n';
+                    }
+                    setPdfText(text);
+
+                    // Initial expansion
+                    const topics = ['Core Themes', 'Methodology', 'Key Findings', 'Implications'];
+                    const newNodes = topics.map((t, i) => ({
+                        id: `node-${i}`,
+                        data: { label: t, depth: 1 },
+                        position: { x: i * 200, y: 150 },
+                        className: 'neon-border-purple'
+                    }));
+                    const newEdges = topics.map((_, i) => ({ id: `e-${i}`, source: 'root', target: `node-${i}` }));
+
+                    setNodes([{ id: 'root', data: { label: file.name, depth: 0 }, position: { x: 250, y: 5 }, className: 'neon-border-cyan' }, ...newNodes]);
+                    setEdges(newEdges);
+                } catch (err) {
+                    console.error(err);
+                    alert("Error loading PDF");
+                } finally {
+                    setIsProcessing(false);
+                }
+            };
+
+            const onNodeClick = (_, node) => {
+                if (node.id === 'root' || isProcessing) return;
+                setIsProcessing(true);
+
+                setTimeout(() => {
+                    const subNodes = [`Deep Detail A`, `Nuance B`, `Context C`].map((t, i) => ({
+                        id: `${node.id}-s-${i}`,
+                        data: { label: `${t} of ${node.data.label}`, depth: (node.data.depth || 1) + 1 },
+                        position: { x: node.position.x + (i - 1) * 180, y: node.position.y + 120 },
+                        className: 'neon-border-cyan'
+                    }));
+
+                    const newEdges = subNodes.map((sn, i) => ({ id: `e-${sn.id}`, source: node.id, target: sn.id }));
+
+                    setNodes(nds => [...nds, ...subNodes]);
+                    setEdges(eds => [...eds, ...newEdges]);
+                    setIsProcessing(false);
+                }, 800);
+            };
+
+            return (
+                <div style={{ width: '100vw', height: '100vh' }}>
+                    <div className="sidebar glass-panel">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <Layers color="var(--accent-cyan)" />
+                            <h2 style={{ margin: 0, fontSize: '18px' }}>DeepMindMap</h2>
+                        </div>
+                        <div className="upload-box" onClick={() => document.getElementById('up').click()}>
+                            <Upload size={20} />
+                            <div style={{ fontSize: '12px', marginTop: '5px' }}>Upload PDF</div>
+                            <input id="up" type="file" accept=".pdf" style={{ display: 'none' }} onChange={onFileUpload} />
+                        </div>
+                        {isProcessing && <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div className="spinner"></div>
+                            <span style={{ fontSize: '12px' }}>Processing...</span>
+                        </div>}
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: 'auto' }}>
+                            <Info size={14} style={{ marginBottom: '-3px' }} /> Click nodes to go deeper.
+                        </div>
+                    </div>
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
+                        onNodeClick={onNodeClick}
+                        fitView
+                    >
+                        <Background color="#1a1a20" />
+                        <Controls />
+                        <MiniMap style={{ background: '#0a0a0c' }} nodeColor="#bc13fe" />
+                    </ReactFlow>
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<ReactFlowProvider><DeepMindMap /></ReactFlowProvider>);
+    </script>
+</body>
+</html>
